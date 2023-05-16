@@ -7,6 +7,8 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
+ENV ffmpeg=ffmpeg
+
 # Install FFmpeg and any needed packages specified in requirements.txt
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
