@@ -75,7 +75,8 @@ async def on_interaction(interaction):
     #         await interaction.response.send_message("You are not connected to a voice channel!")
     #     return
     voice_channel = interaction.user.voice.channel
-    await run_song(voice_channel, ffmpeg_path)
+    print(interaction.data)
+    await run_song(voice_channel, ffmpeg_path, interaction.data["custom_id"])
 
 
 bot.run(api_token)
