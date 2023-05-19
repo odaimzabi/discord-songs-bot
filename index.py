@@ -1,8 +1,10 @@
+from asyncio import sleep
 import random
 import discord
 import os
 import platform
 import getpass
+import fnmatch
 
 from pathlib import Path
 
@@ -12,12 +14,12 @@ from utils.run_song import run_song
 from utils.send_soundboard_message import send_soundboard_message
 
 
-
 # Variables declaration
 dotenv_path = Path("./.env")
 load_dotenv(dotenv_path=dotenv_path)
 emojis = ["😂", "😄", "😊", "😍", "👍", "😱", "🙌", "💩", "👏", "😜", "🎉", "😁", "💖"]
 isDebugModeEnabled = False
+
 
 ffmpeg_path, channel_id, api_token = (
     os.getenv("FFMPEG"),
@@ -36,7 +38,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_message(message):
     global isDebugModeEnabled
-     
+
     # Don't respond to ourselves
     if message.author == bot.user:
         return
@@ -60,23 +62,31 @@ async def on_message(message):
 
     #     # Send the message with the button
     #     await ctx.send("This is a message with a button!", view=view)
-    
+
     if message.content.lower() == "toggle-debug-mode":
         isDebugModeEnabled = not isDebugModeEnabled
-    
+
     if message.content.lower() == "display-sounds-board":
         await send_soundboard_message(message.channel, ffmpeg_path)
-        
-    if message.content.lower() == "where-are-you": 
-         if isDebugModeEnabled: await systemInfo(message.channel)
-         
-         
+
+    if message.content.lower() == "where-are-you":
+        if isDebugModeEnabled:
+            await systemInfo(message.channel)
+
     await upload_audio_files(message)
-        
+
     # Process commands after reacting with like emoji
-    #await bot.process_commands(message)
-    
-    
+    await bot.process_commands(message)
+
+    counter = 0
+
+    await sleep(10)
+    async for _ in message.channel.history(limit=None):
+        counter += 1
+
+    if counter > 1:
+        await clear(message.channel)
+        await send_soundboard_message(message.channel, ffmpeg_path)
 
 
 @bot.event
@@ -90,6 +100,10 @@ async def on_ready():
         await channel.send(
             f"Welcome me in Jraba Safi Gang 😍. {bot.user} is Here 😜. Use me well 💖 "
         )
+
+        # Clearing channel
+        await clear(channel)
+
         # Send a message to the channel
         await send_soundboard_message(channel, ffmpeg_path)
 
@@ -109,15 +123,32 @@ async def on_interaction(interaction):
 async def upload_audio_files(message):
     if message.channel.id == channel_id:
         for attachment in message.attachments:
-            if attachment.filename.endswith(('.mp3', '.wav', '.flac')):
-                filepath = os.path.join('./songs', attachment.filename)
+            if attachment.filename.endswith((".mp3", ".wav", ".flac")):
+                filepath = os.path.join("./songs", attachment.filename)
                 # Check if file already exists
                 if not os.path.isfile(filepath):
                     # Download the file
                     await attachment.save(filepath)
-                    print('Downloaded file: ' + attachment.filename)
-                        
-                        
+                    print("Downloaded file: " + attachment.filename)
+
+
+@bot.command(name="delete-song")
+async def delete_file(ctx, song):
+    directory = "./songs/"
+    try:
+        for filename in os.listdir(directory):
+            if fnmatch.fnmatch(filename, song + "*"):
+                filepath = os.path.join(directory, filename)
+                os.remove(filepath)
+                await ctx.send("File {} has been deleted.".format(song))
+    except Exception as e:
+        await ctx.send("An error occurred while deleting the file: {}".format(e))
+
+
+@commands.has_permissions(manage_messages=True)
+async def clear(channel):
+    await channel.purge(limit=None)
+
 
 async def systemInfo(channel):
     # Get OS information
@@ -126,4 +157,6 @@ async def systemInfo(channel):
     username = getpass.getuser()
     await channel.send(f"I am running in {os_info}. In the name of {username}")
     await send_soundboard_message(channel, ffmpeg_path)
+
+
 bot.run(api_token)
