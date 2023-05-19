@@ -5,6 +5,7 @@ import os
 import platform
 import getpass
 import fnmatch
+import json
 
 from pathlib import Path
 
@@ -73,8 +74,6 @@ async def on_message(message):
         if isDebugModeEnabled:
             await systemInfo(message.channel)
 
-    await upload_audio_files(message)
-
     # Process commands after reacting with like emoji
     await bot.process_commands(message)
 
@@ -120,11 +119,13 @@ async def on_interaction(interaction):
     await run_song(interaction, ffmpeg_path, interaction.data["custom_id"])
 
 
-async def upload_audio_files(message):
-    if message.channel.id == channel_id:
-        for attachment in message.attachments:
+@bot.command(name="upload")
+async def upload_audio_files(ctx, name, emoji):
+    if ctx.channel.id == channel_id:
+        for attachment in ctx.message.attachments:
             if attachment.filename.endswith((".mp3", ".wav", ".flac")):
                 filepath = os.path.join("./songs", attachment.filename)
+                add_to_json(emoji, name)
                 # Check if file already exists
                 if not os.path.isfile(filepath):
                     # Download the file
@@ -145,9 +146,27 @@ async def delete_file(ctx, song):
         await ctx.send("An error occurred while deleting the file: {}".format(e))
 
 
+def add_to_json(emoji, name):
+    # Load the existing JSON file into a dictionary
+    with open("data.json", "r") as file:
+        data = json.load(file)
+
+    # Add the emoji and name to the dictionary
+    new_json = {}
+    new_json["emoji"] = emoji
+    new_json["name"] = name
+
+    data.append(new_json)
+
+    # Save the updated dictionary back to the JSON file
+    with open("data.json", "w") as file:
+        json.dump(data, file)
+
+
 @commands.has_permissions(manage_messages=True)
 async def clear(channel):
-    await channel.purge(limit=None)
+    if channel.id == channel_id:
+        await channel.purge(limit=None)
 
 
 async def systemInfo(channel):
