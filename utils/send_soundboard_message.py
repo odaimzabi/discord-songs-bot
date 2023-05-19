@@ -15,10 +15,11 @@ async def send_soundboard_message(channel, ffmpeg_path):
 
     for song in songs:
         button = Button(label=song, style=discord.ButtonStyle.primary, custom_id=song)
-        button.callback = lambda interaction: run_song(interaction, ffmpeg_path)
+        # This is not needed so far.
+        #button.callback = lambda interaction: run_song(interaction, ffmpeg_path, song)
         # Create a view and add the button to it
         view.add_item(button)
 
     # Send the message with the button
     # Process commands after reacting with like emoji
-    await channel.send("this is a test", view=view)
+    await channel.send("Here you go, displaying play board. \nHave fun", view=view)

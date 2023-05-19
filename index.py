@@ -1,17 +1,23 @@
+import random
 import discord
-from discord.ext import commands
-
-from dotenv import load_dotenv
-
-from utils.run_song import run_song
-from utils.send_soundboard_message import send_soundboard_message
 import os
+import platform
+import getpass
 
 from pathlib import Path
 
-# Env variables
+from discord.ext import commands
+from dotenv import load_dotenv
+from utils.run_song import run_song
+from utils.send_soundboard_message import send_soundboard_message
+
+
+
+# Variables declaration
 dotenv_path = Path("./.env")
 load_dotenv(dotenv_path=dotenv_path)
+emojis = ["😂", "😄", "😊", "😍", "👍", "😱", "🙌", "💩", "👏", "😜", "🎉", "😁", "💖"]
+isDebugModeEnabled = False
 
 ffmpeg_path, channel_id, api_token = (
     os.getenv("FFMPEG"),
@@ -29,6 +35,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_message(message):
+    global isDebugModeEnabled
+     
     # Don't respond to ourselves
     if message.author == bot.user:
         return
@@ -37,7 +45,8 @@ async def on_message(message):
     print(f"Message from {message.author.name}: {message.content}")
 
     # React to every message with a like emoji
-    await message.add_reaction("👍")
+    random_emoji = random.choice(emojis)
+    await message.add_reaction(random_emoji)
     # if message.content.lower() == "clap":
     #     ctx = await bot.get_context(message)
 
@@ -51,32 +60,70 @@ async def on_message(message):
 
     #     # Send the message with the button
     #     await ctx.send("This is a message with a button!", view=view)
-    #     # Process commands after reacting with like emoji
-    #     await bot.process_commands(message)
-    if message.content.lower() == "!dsb":
+    
+    if message.content.lower() == "toggle-debug-mode":
+        isDebugModeEnabled = not isDebugModeEnabled
+    
+    if message.content.lower() == "display-sounds-board":
         await send_soundboard_message(message.channel, ffmpeg_path)
+        
+    if message.content.lower() == "where-are-you": 
+         if isDebugModeEnabled: await systemInfo(message.channel)
+         
+         
+    await upload_audio_files(message)
+        
+    # Process commands after reacting with like emoji
+    #await bot.process_commands(message)
+    
+    
 
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user}")
+    global isDebugModeEnabled
+    print(f"Welcome Djaraba gang. {bot.user} is Here. Use me well :D ")
 
     # Get the channel object using the channel ID
     channel = bot.get_channel(channel_id)
     if channel:
+        await channel.send(
+            f"Welcome me in Jraba Safi Gang 😍. {bot.user} is Here 😜. Use me well 💖 "
+        )
         # Send a message to the channel
         await send_soundboard_message(channel, ffmpeg_path)
 
 
 @bot.event
 async def on_interaction(interaction):
-    await interaction.response.send_message("Joining voice channel...")
-    # if interaction.user.voice is None:
-    #         await interaction.response.send_message("You are not connected to a voice channel!")
-    #     return
-    voice_channel = interaction.user.voice.channel
-    print(interaction.data)
-    await run_song(voice_channel, ffmpeg_path, interaction.data["custom_id"])
+    if interaction.user.voice is None:
+        print("User is not connected to any channel.")
+        await interaction.response.send_message(
+            "You are not connected to a voice channel!"
+        )
+        return
+
+    await run_song(interaction, ffmpeg_path, interaction.data["custom_id"])
 
 
+async def upload_audio_files(message):
+    if message.channel.id == channel_id:
+        for attachment in message.attachments:
+            if attachment.filename.endswith(('.mp3', '.wav', '.flac')):
+                filepath = os.path.join('./songs', attachment.filename)
+                # Check if file already exists
+                if not os.path.isfile(filepath):
+                    # Download the file
+                    await attachment.save(filepath)
+                    print('Downloaded file: ' + attachment.filename)
+                        
+                        
+
+async def systemInfo(channel):
+    # Get OS information
+    os_info = platform.system() + " " + platform.release()
+    # Get the current username
+    username = getpass.getuser()
+    await channel.send(f"I am running in {os_info}. In the name of {username}")
+    await send_soundboard_message(channel, ffmpeg_path)
 bot.run(api_token)
