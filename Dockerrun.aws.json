@@ -1,32 +1,16 @@
 {
-    "AWSEBDockerrunVersion": "2",
-    "containerDefinitions": [
+    "AWSEBDockerrunVersion": "1",
+    "Image": {
+        "Name": "Dockerfile",
+        "Update": "true"
+    },
+    "Ports": [
         {
-            "name": "discord-songs-bot",
-            "image": "python:3.9-slim-buster",
-            "essential": true,
-            "memory": 512,
-            "portMappings": [
-                {
-                    "hostPort": 80,
-                    "containerPort": 80
-                }
-            ]
+            "ContainerPort": 80,
+            "HostPort": 80
         }
     ],
-    "platform": {
-        "platformName": "Docker",
-        "platformVersion": "1.4.0"
-    },
-    "executionRoleArn": "arn:aws:iam::573520634310:role/ecs-execution-role-discord-bot",
-    "taskRoleArn": "arn:aws:iam::573520634310:role/role-name",
-    "ecsConfiguration": {
-        "ecsClusterName": "discord-songs-bot",
-        "serviceRoleArn": "arn:aws:iam::573520634310:role/discord-bot-task-role",
-        "taskDefinition": {
-            "taskLevel": {
-                "computePlatform": "FARGATE"
-            }
-        }
-    }
+    "Volumes": [],
+    "Logging": "/var/log/nginx",
+    "Command": "docker build -t bot-image ."
 }
