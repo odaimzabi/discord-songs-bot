@@ -9,7 +9,7 @@ COPY . /app
 
 ENV ffmpeg=ffmpeg
 
-EXPOSE 80
+
 
 # Install FFmpeg and any needed packages specified in requirements.txt
 RUN apt-get update && \
@@ -17,7 +17,7 @@ RUN apt-get update && \
     pip install --no-cache-dir -r requirements.txt
 
 # Make port 80 available to the world outside this container (if needed)
-# EXPOSE 80
+EXPOSE 80
 
 # Run bot.py when the container launches
 CMD ["python", "index.py"]
