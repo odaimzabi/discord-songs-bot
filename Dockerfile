@@ -9,6 +9,8 @@ COPY . /app
 
 ENV ffmpeg=ffmpeg
 
+EXPOSE 80
+
 # Install FFmpeg and any needed packages specified in requirements.txt
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
