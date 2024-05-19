@@ -9,7 +9,7 @@ import json
 
 from pathlib import Path
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, InteractionType
 from dotenv import load_dotenv
 from utils.run_song import run_song
 from utils.send_soundboard_message import send_soundboard_message
@@ -21,10 +21,11 @@ load_dotenv(dotenv_path=dotenv_path)
 emojis = ["😂", "😄", "😊", "😍", "👍", "😱", "🙌", "💩", "👏", "😜", "🎉", "😁", "💖"]
 isDebugModeEnabled = False
 
-ffmpeg_path, channel_id, api_token = (
+ffmpeg_path, channel_id, api_token, guild_id = (
     os.getenv("FFMPEG"),
     int(os.getenv("CHANNEL_ID")),
     os.getenv("API_TOKEN"),
+    int(os.getenv("GUILD_ID"))
 )
 
 # Intents
@@ -55,14 +56,19 @@ async def on_ready():
         # Send a message to the channel
         await send_soundboard_message(channel, ffmpeg_path)
 
-        # Sync commands with the guild and globally
+        # Sync commands for each guild the bot is in
         try:
-            await tree.sync(guild=discord.Object(id=channel.guild.id))
-            print("Slash commands have been synced with the guild.")
+            guild = discord.Object(id=guild_id)
+            await tree.sync(guild=guild)
+            print(f"Slash commands have been synced with the guild: {guild_id}")
+        except Exception as e:
+            print(f"An error occurred while syncing commands with the guild: {e}")
+
+        try:
             await tree.sync()
             print("Slash commands have been synced globally.")
         except Exception as e:
-            print(f"An error occurred while syncing commands: {e}")
+            print(f"An error occurred while syncing global commands: {e}")
 
 
 @bot.event
@@ -123,15 +129,14 @@ async def on_message(message):
 
 @bot.event
 async def on_interaction(interaction):
-    if interaction.user.voice is None:
-        print("User is not connected to any channel.")
-        await interaction.response.send_message(
-            "You are not connected to a voice channel!"
-        )
-        return
-
-    await run_song(interaction, ffmpeg_path, interaction.data["custom_id"])
-
+    if interaction.type == InteractionType.component:
+        if interaction.user.voice is None:
+            print("User is not connected to any channel.")
+            await interaction.response.send_message(
+                "You are not connected to a voice channel!", ephemeral=True
+            )
+            return
+        await run_song(interaction, ffmpeg_path, interaction.data["custom_id"])
 
 @tree.command(name="upload", description="Start the audio file upload process")
 @app_commands.describe(name="Name of the song", emoji="Emoji for the song")
@@ -170,6 +175,26 @@ async def delete_file(interaction: discord.Interaction, song: str):
     except Exception as e:
         await interaction.response.send_message(f"An error occurred while deleting the file: {e}")
 
+
+@tree.command(name="download_song", description="Download a song from the bot")
+@app_commands.describe(song="Name of the song to download")
+async def download_song(interaction: discord.Interaction, song: str):
+    data = await getSongConfigs()
+    song_info = next((item for item in data if item["name"] == song), None)
+
+    if song_info is None:
+        await interaction.response.send_message(f"The song '{song}' does not exist in the config.", ephemeral=True)
+        return
+
+    uri = song_info.get("uri", f"{song}.mp3")
+    file_path = os.path.join("./songs", uri)
+
+    if os.path.isfile(file_path):
+        await interaction.response.send_message(file=discord.File(file_path), ephemeral=True)
+    else:
+        await interaction.response.send_message(f"The song file '{uri}' does not exist.", ephemeral=True)
+
+
 @tree.command(name="toggle_debug_mode", description="Toggle the debug mode")
 async def toggle_debug_mode(interaction: discord.Interaction):
     global isDebugModeEnabled
@@ -190,7 +215,7 @@ async def where_are_you(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("Debug mode is not enabled.", ephemeral=True)
 
-@tree.command(name="sync", description="Manually sync commands")
+@tree.command(name="sync", description="Manually sync commands", guild=discord.Object(id=guild_id))
 async def sync_commands(interaction: discord.Interaction):
     try:
         guild = discord.Object(id=interaction.guild.id)
