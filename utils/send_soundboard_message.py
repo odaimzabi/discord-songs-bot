@@ -1,23 +1,26 @@
 import discord
-import json
 from discord.ui import Button, View
-from utils.utils import get_songs
-
-
-# TODO : delete the user comment after displaying the board
+from utils.utils import get_songs, getSongConfigs, help_message
 
 
 async def send_soundboard_message(channel, ffmpeg_path):
     print("Displaying soundboard...")
     songs = get_songs("./songs")
     view = View()
-    with open("data.json", "r") as file:
-        data = json.load(file)
+    data = await getSongConfigs()
+    added_custom_ids = set()
+
     for item in data:
+        custom_id = item["name"]
+        if custom_id in added_custom_ids:
+            print(f"Duplicate custom_id detected: {custom_id}. Skipping this button.")
+            continue
+        added_custom_ids.add(custom_id)
+
         button = Button(
             label=item["emoji"] + " " + item["name"],
             style=discord.ButtonStyle.primary,
-            custom_id=item["name"],
+            custom_id=custom_id,
         )
         # This is not needed so far.
         # button.callback = lambda interaction: run_song(interaction, ffmpeg_path, song)
@@ -26,4 +29,5 @@ async def send_soundboard_message(channel, ffmpeg_path):
 
     # Send the message with the button
     # Process commands after reacting with like emoji
-    await channel.send("Here you go, displaying play board. \nHave fun", view=view)
+    await channel.send("\nHave fun", view=view)
+    await help_message(channel)

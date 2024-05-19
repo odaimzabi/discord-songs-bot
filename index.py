@@ -10,10 +10,11 @@ import json
 from pathlib import Path
 
 from discord.ext import commands
+from discord import app_commands
 from dotenv import load_dotenv
 from utils.run_song import run_song
 from utils.send_soundboard_message import send_soundboard_message
-
+from utils.utils import getSongConfigs, saveSongConfigs, help_message
 
 # Variables declaration
 dotenv_path = Path("./.env")
@@ -50,19 +51,6 @@ async def on_message(message):
     # React to every message with a like emoji
     random_emoji = random.choice(emojis)
     await message.add_reaction(random_emoji)
-    # if message.content.lower() == "clap":
-    #     ctx = await bot.get_context(message)
-
-    #     button = Button(label="Click Me!", style=discord.ButtonStyle.primary)
-    #     button.callback = lambda interaction: run_song(
-    #         interaction, message, ffmpeg_path
-    #     )
-    #     # Create a view and add the button to it
-    #     view = View()
-    #     view.add_item(button)
-
-    #     # Send the message with the button
-    #     await ctx.send("This is a message with a button!", view=view)
 
     if message.content.lower() == "toggle-debug-mode":
         isDebugModeEnabled = not isDebugModeEnabled
@@ -83,7 +71,7 @@ async def on_message(message):
     async for _ in message.channel.history(limit=None):
         counter += 1
 
-    if counter > 1:
+    if counter > 10:
         await clear(message.channel)
         await send_soundboard_message(message.channel, ffmpeg_path)
 
@@ -95,13 +83,14 @@ async def on_ready():
 
     # Get the channel object using the channel ID
     channel = bot.get_channel(channel_id)
+    # Clearing channel
+    await clear(channel)
     if channel:
         await channel.send(
             f"Welcome me in Jraba Safi Gang 😍. {bot.user} is Here 😜. Use me well 💖 "
         )
 
-        # Clearing channel
-        await clear(channel)
+        await help_message(channel)
 
         # Send a message to the channel
         await send_soundboard_message(channel, ffmpeg_path)
@@ -121,42 +110,69 @@ async def on_interaction(interaction):
 
 @bot.command(name="upload")
 async def upload_audio_files(ctx, name, emoji):
+    print("Upload command received!")
     if ctx.channel.id == channel_id:
+        data = await getSongConfigs()
+        # Check if a song with the same name already exists
+        if any(item["name"] == name for item in data):
+            await ctx.send(f"A song with the name '{name}' already exists.")
+            return
+
         for attachment in ctx.message.attachments:
             if attachment.filename.endswith((".mp3", ".wav", ".flac")):
                 filepath = os.path.join("./songs", attachment.filename)
-                add_to_json(emoji, name)
-                # Check if file already exists
+                # Check if file already exists in the directory
                 if not os.path.isfile(filepath):
                     # Download the file
                     await attachment.save(filepath)
                     print("Downloaded file: " + attachment.filename)
-
+                    # Add the song to the JSON config
+                    await add_to_json(emoji, name, attachment.filename)
+                    await ctx.send(f"File '{name}' has been uploaded and saved.")
+                else:
+                    await ctx.send(f"File '{attachment.filename}' already exists in the directory.")
+    else:
+        await ctx.send("This command can only be used in the designated channel.")
 
 @bot.command(name="delete-song")
 async def delete_file(ctx, song):
     directory = "./songs/"
+    data = await getSongConfigs()
+    uri = next((item.get("uri") for item in data if item.get("name") == song), song + ".mp3")
     try:
+        file_deleted = False
         for filename in os.listdir(directory):
-            if fnmatch.fnmatch(filename, song + "*"):
+            if fnmatch.fnmatch(filename, uri):
                 filepath = os.path.join(directory, filename)
                 os.remove(filepath)
-                await ctx.send("File {} has been deleted.".format(song))
+                file_deleted = True
+                await ctx.send(f"File {filename} has been deleted.")
+                break
+
+        if not file_deleted:
+            await ctx.send(f"File {uri} not found in the directory.")
+
+        # Remove the song config from the data
+        new_data = [item for item in data if item.get("name") != song]
+        if len(new_data) == len(data):
+            await ctx.send(f"Song {song} not found in the config file.")
+        else:
+            await saveSongConfigs(new_data)
+            await ctx.send(f"Song {song} has been removed from the config file.")
+
     except Exception as e:
-        await ctx.send("An error occurred while deleting the file: {}".format(e))
+        await ctx.send(f"An error occurred while deleting the file: {e}")
 
-
-def add_to_json(emoji, name):
+async def add_to_json(emoji, name, filename):
     # Load the existing JSON file into a dictionary
-    with open("data.json", "r") as file:
-        data = json.load(file)
+    data = await getSongConfigs()
 
     # Add the emoji and name to the dictionary
-    new_json = {}
-    new_json["emoji"] = emoji
-    new_json["name"] = name
-
-    data.append(new_json)
+    data.append({
+        "emoji": emoji,
+        "name": name,
+        "uri": filename
+    })
 
     # Save the updated dictionary back to the JSON file
     with open("data.json", "w") as file:
@@ -177,5 +193,9 @@ async def systemInfo(channel):
     await channel.send(f"I am running in {os_info}. In the name of {username}")
     await send_soundboard_message(channel, ffmpeg_path)
 
+@bot.command(name="die")
+async def die(ctx):
+    await ctx.send(f"Bye :pleading_face: ")
+    exit(0)
 
 bot.run(api_token)
