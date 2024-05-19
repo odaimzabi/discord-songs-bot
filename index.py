@@ -34,46 +34,7 @@ intents.messages = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
-
-
-@bot.event
-async def on_message(message):
-    global isDebugModeEnabled
-
-    # Don't respond to ourselves
-    if message.author == bot.user:
-        return
-
-    # Print the message to the console
-    print(f"Message from {message.author.name}: {message.content}")
-
-    # React to every message with a like emoji
-    random_emoji = random.choice(emojis)
-    await message.add_reaction(random_emoji)
-
-    if message.content.lower() == "toggle-debug-mode":
-        isDebugModeEnabled = not isDebugModeEnabled
-
-    if message.content.lower() == "display-sounds-board":
-        await send_soundboard_message(message.channel, ffmpeg_path)
-
-    if message.content.lower() == "where-are-you":
-        if isDebugModeEnabled:
-            await systemInfo(message.channel)
-
-    # Process commands after reacting with like emoji
-    await bot.process_commands(message)
-
-    counter = 0
-
-    await asyncio.sleep(10)
-    async for _ in message.channel.history(limit=None):
-        counter += 1
-
-    if counter > 10:
-        await clear(message.channel)
-        await send_soundboard_message(message.channel, ffmpeg_path)
-
+upload_pending = {}
 
 @bot.event
 async def on_ready():
@@ -105,6 +66,62 @@ async def on_ready():
 
 
 @bot.event
+async def on_message(message):
+    global isDebugModeEnabled
+
+    # Don't respond to ourselves
+    if message.author == bot.user:
+        return
+
+    # Print the message to the console
+    print(f"Message from {message.author.name}: {message.content}")
+
+    # React to every message with a like emoji
+    random_emoji = random.choice(emojis)
+    await message.add_reaction(random_emoji)
+
+    user_id = message.author.id
+
+    if user_id in upload_pending:
+        details = upload_pending[user_id]
+        name = details["name"]
+        emoji = details["emoji"]
+
+        if message.attachments:
+            for attachment in message.attachments:
+                if attachment.filename.endswith((".mp3", ".wav", ".flac")):
+                    filepath = os.path.join("./songs", attachment.filename)
+                    if not os.path.isfile(filepath):
+                        await attachment.save(filepath)
+                        await add_to_json(emoji, name, attachment.filename)
+                        await message.channel.send(f"File '{name}' has been uploaded and saved.")
+                    else:
+                        await message.channel.send(f"File '{attachment.filename}' already exists in the directory.")
+                    break
+            else:
+                await message.channel.send(
+                    "Please upload an audio file with one of the following extensions: .mp3, .wav, .flac")
+
+            # Clear the pending upload
+            del upload_pending[user_id]
+        else:
+            await message.channel.send("No file attached. Please try the upload process again.")
+
+    # Process commands after reacting with like emoji
+    await bot.process_commands(message)
+
+    counter = 0
+
+    await asyncio.sleep(10)
+    async for _ in message.channel.history(limit=None):
+        counter += 1
+
+    if counter > 10:
+        await clear(message.channel)
+        await send_soundboard_message(message.channel, ffmpeg_path)
+
+
+@bot.event
 async def on_interaction(interaction):
     if interaction.user.voice is None:
         print("User is not connected to any channel.")
@@ -116,33 +133,11 @@ async def on_interaction(interaction):
     await run_song(interaction, ffmpeg_path, interaction.data["custom_id"])
 
 
-@tree.command(name="upload", description="Upload an audio file")
-@app_commands.describe(name="Name of the song", emoji="Emoji for the song", attachment="Song audio file (.mp3, .wav, .flac)")
-async def upload_audio_files(interaction: discord.Interaction, name: str, emoji: str):
-    print("Upload command received!")
-    if interaction.channel_id == channel_id:
-        data = await getSongConfigs()
-        # Check if a song with the same name already exists
-        if any(item["name"] == name for item in data):
-            await interaction.response.send_message(f"A song with the name '{name}' already exists.")
-            return
-
-        for attachment in interaction.attachments:
-            if attachment.filename.endswith((".mp3", ".wav", ".flac")):
-                filepath = os.path.join("./songs", attachment.filename)
-                # Check if file already exists in the directory
-                if not os.path.isfile(filepath):
-                    # Download the file
-                    await attachment.save(filepath)
-                    print("Downloaded file: " + attachment.filename)
-                    # Add the song to the JSON config
-                    await add_to_json(emoji, name, attachment.filename)
-                    await interaction.response.send_message(f"File '{name}' has been uploaded and saved.")
-                else:
-                    await interaction.response.send_message(f"File '{attachment.filename}' already exists in the directory.")
-    else:
-        await interaction.response.send_message("This command can only be used in the designated channel.")
-
+@tree.command(name="upload", description="Start the audio file upload process")
+@app_commands.describe(name="Name of the song", emoji="Emoji for the song")
+async def start_upload(interaction: discord.Interaction, name: str, emoji: str):
+    upload_pending[interaction.user.id] = {"name": name, "emoji": emoji}
+    await interaction.response.send_message(f"Upload process started for {name}. Please upload the audio file in your next message.", ephemeral=True)
 
 @tree.command(name="delete_song", description="Delete an audio file")
 @app_commands.describe(song="Name of the song to delete")
@@ -175,6 +170,37 @@ async def delete_file(interaction: discord.Interaction, song: str):
     except Exception as e:
         await interaction.response.send_message(f"An error occurred while deleting the file: {e}")
 
+@tree.command(name="toggle_debug_mode", description="Toggle the debug mode")
+async def toggle_debug_mode(interaction: discord.Interaction):
+    global isDebugModeEnabled
+    isDebugModeEnabled = not isDebugModeEnabled
+    status = "enabled" if isDebugModeEnabled else "disabled"
+    await interaction.response.send_message(f"Debug mode {status}.", ephemeral=True)
+
+@tree.command(name="display_sounds_board", description="Display the sounds board")
+async def display_sounds_board(interaction: discord.Interaction):
+    await send_soundboard_message(interaction.channel, ffmpeg_path)
+    await interaction.response.send_message("Soundboard displayed.", ephemeral=True)
+
+@tree.command(name="where_are_you", description="Get the bot system info (Debug Mode Only)")
+async def where_are_you(interaction: discord.Interaction):
+    if isDebugModeEnabled:
+        await systemInfo(interaction.channel)
+        await interaction.response.send_message("System info displayed.", ephemeral=True)
+    else:
+        await interaction.response.send_message("Debug mode is not enabled.", ephemeral=True)
+
+@tree.command(name="sync", description="Manually sync commands")
+async def sync_commands(interaction: discord.Interaction):
+    try:
+        guild = discord.Object(id=interaction.guild.id)
+        await tree.sync(guild=guild)
+        await tree.sync()
+        await interaction.response.send_message("Commands have been synced.", ephemeral=True)
+        print("Commands have been manually synced.")
+    except Exception as e:
+        await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
+        print(f"An error occurred while syncing commands: {e}")
 
 async def add_to_json(emoji, name, filename):
     # Load the existing JSON file into a dictionary
@@ -214,3 +240,5 @@ async def die(interaction: discord.Interaction):
 
 
 bot.run(api_token)
+# Permission Code 58254826532160
+# https://discord.com/oauth2/authorize?client_id=1107762447726682133&scope=bot+applications.commands&permissions=58254826532160
