@@ -123,8 +123,9 @@ async def on_message(message):
         counter += 1
 
     if counter > 10:
-        await clear(message.channel)
-        await send_soundboard_message(message.channel, ffmpeg_path)
+        if message.channel.id == channel_id:
+            await clear(message.channel)
+            await send_soundboard_message(message.channel, ffmpeg_path)
 
 
 @bot.event
