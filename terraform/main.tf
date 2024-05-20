@@ -6,9 +6,8 @@ terraform {
   }
 }
 
-# Networking setup
 provider "aws" {
-  region = "${var.region}"
+  region = var.region
 }
 
 resource "aws_vpc" "main" {
@@ -74,12 +73,64 @@ resource "aws_security_group" "ecs_sg" {
   }
 }
 
-# IAM Setup
+# IAM Role for ECS instances
+resource "aws_iam_role" "ecs_instance_role" {
+  name = "ecsInstanceRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAM Policy for ECS instances
+resource "aws_iam_role_policy" "ecs_instance_policy" {
+  name = "ecsInstancePolicy"
+  role = aws_iam_role.ecs_instance_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ecs:CreateCluster",
+          "ecs:DeregisterContainerInstance",
+          "ecs:DiscoverPollEndpoint",
+          "ecs:Poll",
+          "ecs:RegisterContainerInstance",
+          "ecs:StartTelemetrySession",
+          "ecs:Submit*",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "ecs_instance_profile" {
+  name = "ecsInstanceProfile"
+  role = aws_iam_role.ecs_instance_role.name
+}
 
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecsTaskExecutionRole"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [{
       Action = "sts:AssumeRole"
       Effect = "Allow"
@@ -94,8 +145,6 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   ]
 }
 
-# ECR/ECS
-
 resource "aws_ecr_repository" "discord_bot" {
   name = "discord-bot"
 }
@@ -109,7 +158,7 @@ resource "aws_ecs_capacity_provider" "discord_bot_capacity_provider" {
 
     managed_scaling {
       status                    = "ENABLED"
-      target_capacity           = 75
+      target_capacity           = 100
       minimum_scaling_step_size = 1
       maximum_scaling_step_size = 1000
     }
@@ -149,12 +198,7 @@ resource "aws_launch_template" "ecs_spot_launch_template" {
     name = aws_iam_instance_profile.ecs_instance_profile.name
   }
 
-   user_data = base64encode(file("user_data.sh"))
-}
-
-resource "aws_iam_instance_profile" "ecs_instance_profile" {
-  name = "ecsInstanceProfile"
-  role = aws_iam_role.ecs_task_execution_role.name
+  user_data = base64encode(file("user_data.sh"))
 }
 
 resource "aws_autoscaling_group" "ecs_spot_asg" {
@@ -181,14 +225,13 @@ resource "aws_autoscaling_group" "ecs_spot_asg" {
   }
 }
 
-
 resource "aws_ecs_task_definition" "discord_bot_task" {
   family                   = "discord-bot-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["EC2"]
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  memory                   = "512"
-  cpu                      = "256"
+  memory                   = "400"
+  cpu                      = "200"
 
   container_definitions = jsonencode([
     {
@@ -238,5 +281,4 @@ resource "aws_ecs_service" "discord_bot_service" {
     subnets          = [aws_subnet.main.id]
     security_groups  = [aws_security_group.ecs_sg.id]
   }
-
 }
