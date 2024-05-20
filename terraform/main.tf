@@ -100,10 +100,6 @@ resource "aws_ecr_repository" "discord_bot" {
   name = "discord-bot"
 }
 
-resource "aws_ecs_cluster" "discord_bot_cluster" {
-  name = "discord-bot-cluster"
-}
-
 resource "aws_ecs_capacity_provider" "discord_bot_capacity_provider" {
   name = "discord-bot-capacity-provider"
 
@@ -118,6 +114,22 @@ resource "aws_ecs_capacity_provider" "discord_bot_capacity_provider" {
       maximum_scaling_step_size = 1000
     }
   }
+}
+
+resource "aws_ecs_cluster_capacity_providers" "aws_ecs_cluster_capacity_providers" {
+  cluster_name = aws_ecs_cluster.discord_bot_cluster.name
+
+  capacity_providers = [aws_ecs_capacity_provider.discord_bot_capacity_provider.name]
+
+  default_capacity_provider_strategy {
+    base              = 1
+    weight            = 100
+    capacity_provider = aws_ecs_capacity_provider.discord_bot_capacity_provider.name
+  }
+}
+
+resource "aws_ecs_cluster" "discord_bot_cluster" {
+  name = "discord-bot-cluster"
 }
 
 resource "aws_launch_template" "ecs_spot_launch_template" {
@@ -150,7 +162,7 @@ resource "aws_autoscaling_group" "ecs_spot_asg" {
   min_size         = 1
   desired_capacity = 1
   vpc_zone_identifier = [aws_subnet.main.id]
-
+  protect_from_scale_in  = true
 
   mixed_instances_policy {
     instances_distribution {
@@ -216,10 +228,15 @@ resource "aws_ecs_service" "discord_bot_service" {
   cluster         = aws_ecs_cluster.discord_bot_cluster.id
   task_definition = aws_ecs_task_definition.discord_bot_task.arn
   desired_count   = 1
-  launch_type     = "EC2"
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.discord_bot_capacity_provider.name
+    weight            = 1
+  }
 
   network_configuration {
-    subnets         = [aws_subnet.main.id]
-    security_groups = [aws_security_group.ecs_sg.id]
+    subnets          = [aws_subnet.main.id]
+    security_groups  = [aws_security_group.ecs_sg.id]
   }
+
 }
