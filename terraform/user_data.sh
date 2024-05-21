@@ -24,14 +24,17 @@ set -e
 set -e
 
 # Install Docker
-yum install -y docker
+#yum install -y docker
+amazon-linux-extras install -y docker
 
 # Start Docker
 service docker start
 chkconfig docker on
-
 # Install the ECS agent
-yum install -y ecs-init
+amazon-linux-extras install -y ecs
+
+# Clear any previous ECS agent state
+rm -rf /var/lib/ecs/data/*
 
 # Create the ECS config directory if it doesn't exist
 mkdir -p /etc/ecs
@@ -42,3 +45,6 @@ echo "ECS_CLUSTER=discord-bot-cluster" > /etc/ecs/ecs.config
 # Enable and start the ECS agent
 systemctl enable ecs
 systemctl start ecs
+
+# Start the ECS agent
+systemctl enable --now ecs
